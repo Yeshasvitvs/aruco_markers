@@ -1,11 +1,16 @@
 #include <iostream>
 #include <string.h>
 #include <boost/lexical_cast.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>
 
-#include <opencv2/aruco/charuco.hpp>
-#include <opencv2/aruco/dictionary.hpp>
+
+#include <opencv/cv.h>
+#include <opencv2/highgui.hpp>
+#include <opencv2/aruco.hpp>
+
+//#include <opencv2/opencv.hpp>
+//#include <opencv2/aruco.hpp>
+//#include <opencv2/aruco/charuco.hpp>
+//#include <opencv2/aruco/dictionary.hpp>
 
 int main(int argc, char **argv) {
     
@@ -26,7 +31,7 @@ int main(int argc, char **argv) {
     
     std::vector<cv::Mat>* marker_images;
     marker_images = new std::vector<cv::Mat>(n_markers);
-    cv::aruco::Dictionary marker_dict = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_250);
+    cv::aruco::Dictionary marker_dict = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_50);
     
     if(init != true)
     {
@@ -72,7 +77,7 @@ int main(int argc, char **argv) {
         
         cv::aruco::detectMarkers(inputImage, marker_dict, markerCorners, markersIds, parameters, rejectedCandidates);
         cv::aruco::drawDetectedMarkers(inputImage,markerCorners,markersIds);
-        cv::aruco::estimatePoseSingleMarkers(markerCorners,0.05,camera_matrix,dist_coeffs,rvecs,tvecs);
+        cv::aruco::estimatePoseSingleMarkers(markerCorners,0.1,camera_matrix,dist_coeffs,rvecs,tvecs);
         
         for(int i=0; i < markersIds.size(); i++)
         {
