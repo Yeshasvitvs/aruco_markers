@@ -36,9 +36,13 @@ find_package(Boost REQUIRED)
 message(STATUS "BOOST_INCLUDE_DIRS : " ${Boost_INCLUDE_DIRS})
 message(STATUS "BOOST_LIBRARIES : " ${Boost_LIBRARIES})
 
-include_directories(${OpenCV_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+find_package(YARP REQUIRED)
+message(STATUS "YARP_INCLUDE_DIRS : " ${YARP_INCLUDE_DIRS})
+message(STATUS "YARP_LIBRARIES : " ${YARP_LIBRARIES} )
+
+include_directories(${OpenCV_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${YARP_INCLUDE_DIRS})
 
 add_executable(aruco_markers main.cpp)
 
-target_link_libraries(aruco_markers ${OpenCV_LIBS} ${Boost_LIBRARIES})
+target_link_libraries(aruco_markers ${OpenCV_LIBS} ${Boost_LIBRARIES} ${YARP_LIBRARIES})
 #install(TARGETS aruco_markers RUNTIME DESTINATION bin)

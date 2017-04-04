@@ -6,6 +6,13 @@
 #include <opencv/cv.h>
 #include <opencv2/highgui.hpp>
 #include <opencv2/aruco.hpp>
+#include <opencv2/calib3d.hpp>
+
+#include <yarp/os/BufferedPort.h>
+#include <yarp/os/Network.h>
+#include <yarp/sig/Image.h>
+#include <yarp/os/Log.h>
+#include <yarp/os/LogStream.h>
 
 //#include <opencv2/opencv.hpp>
 //#include <opencv2/aruco.hpp>
@@ -53,7 +60,25 @@ int main(int argc, char **argv) {
         init = true;
     }
     
-    //Capturing camera input
+    //captuging camera input - yarp
+    yarp::os::BufferedPort<yarp::sig::ImageOf< yarp::sig::PixelBgr > > *image_input_port;
+    yarp::sig::ImageOf< yarp::sig::PixelBgr > *input_yarp_frame;
+    
+    if(!yarp::os::Network::initialized())
+        yarp::os::Network::init();
+    
+    image_input_port = new yarp::os::BufferedPort<yarp::sig::ImageOf< yarp::sig::PixelBgr > >;
+    if(image_input_port->open("/aruco/camera:i"))
+    {
+        if(yarp::os::Network::checkNetwork())
+        {
+            if(!yarp::os::Network::connect("/marker_camera/gazebo_yarp_plugin/camera:o",image_input_port->getName()))
+                yError() << "Cannot connect to the port /marker_camera/gazebo_yarp_plugin/camera:o";
+        }
+    }
+    
+    
+    //Capturing camera input - opencv
     cv::VideoCapture inputVideo_cap;
     inputVideo_cap.open(0);
     inputVideo_cap.set(CV_CAP_PROP_FRAME_WIDTH,640);
@@ -61,12 +86,22 @@ int main(int argc, char **argv) {
     
     //Camera calibration
     cv::Mat camera_matrix, dist_coeffs;
-    std::string calibration_file_ = "/home/yeshi/projects/aruco_markers/out_camera_data.yml";
+    
+    //Values corresponding to gazebo camera plugin values
+    cv::Mat CM = (cv::Mat_<double>(3,3) << 510, 0, 320, 0, 510, 240, 0, 0, 1);
+    cv::Mat DM = (cv::Mat_<double>(5,1) << -0.4, -0.5, -0.3, 0.0, 0.0);
+    camera_matrix = CM;
+    dist_coeffs = DM;
+    
+    /*std::string calibration_file_ = "/home/yeshi/projects/aruco_markers/out_camera_data.yml";
     cv::FileStorage fs;
     fs.open(calibration_file_,cv::FileStorage::READ);
     fs["camera_matrix"] >> camera_matrix;
     fs["distortion_coefficients"] >> dist_coeffs;
-    fs.release();
+    fs.release();*/
+    
+    std::cout << "Camera matrix : " << camera_matrix << std::endl;
+    std::cout << "Distortion Coeff : " << dist_coeffs << std::endl;
 
     
     //Marker detection and pose estimation
@@ -96,8 +131,8 @@ int main(int argc, char **argv) {
     parameters.perspectiveRemoveIgnoredMarginPerCell = 0.2;*/
     
     //Marker Identification
-    parameters.maxErroneousBitsInBorderRate = 0.2; //Relative to the total number of bits
-    parameters.errorCorrectionRate = 0.6;
+    //parameters.maxErroneousBitsInBorderRate = 0.2; //Relative to the total number of bits
+    //parameters.errorCorrectionRate = 0.6;
     
     //Corner Refinement
     parameters.doCornerRefinement = true;
@@ -113,10 +148,15 @@ int main(int argc, char **argv) {
     
     while(1)
     {
+        //Opencv capture
+        //inputVideo_cap.read(inputImage);
         
-        inputVideo_cap.read(inputImage);
-        
-        
+        //Yarp capture
+        input_yarp_frame = image_input_port->read();
+        //conversion from yarp image to CV Mat
+        IplImage *dummy = (IplImage*)(*input_yarp_frame).getIplImage();
+        inputImage = cv::cvarrToMat(dummy);
+    
         cv::aruco::detectMarkers(inputImage, marker_dict, markerCorners, markersIds, parameters, rejectedCandidates);
         if(markersIds.empty())
             std::cout << "Cannot detect markers" << std::endl;
@@ -126,6 +166,11 @@ int main(int argc, char **argv) {
         for(int i=0; i < markersIds.size(); i++)
         {
             //Pose values of each marker
+            //std::cout << "Marker ID " << markersIds.at(i) << " : " << tvecs[i] << " , " << rvecs[i] << std::endl
+            //cv::Mat rvecR;
+            //cv::Rodrigues(rvecs[i],rvecR);
+            //std::cout << rvecR;
+            std::cout << markersIds.at(i) << " " << tvecs[i][0] << " " << tvecs[i][1] << " " << tvecs[i][2] << " " << rvecs[i][0] << " " << rvecs[i][1] << " " << rvecs[i][2]  << std::endl;
             cv::aruco::drawAxis(inputImage,camera_matrix,dist_coeffs,rvecs[i],tvecs[i],axis_length);
         }
         cv::namedWindow("Input Image",CV_WINDOW_AUTOSIZE);
