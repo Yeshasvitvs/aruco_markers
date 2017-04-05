@@ -7,6 +7,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
+#include <opencv2/video/tracking.hpp>
 
 #include <yarp/os/BufferedPort.h>
 #include <yarp/os/Network.h>
@@ -18,6 +19,8 @@
 //#include <opencv2/aruco.hpp>
 //#include <opencv2/aruco/charuco.hpp>
 //#include <opencv2/aruco/dictionary.hpp>
+
+
 
 int main(int argc, char **argv) {
     
@@ -106,6 +109,7 @@ int main(int argc, char **argv) {
     
     //Marker detection and pose estimation
     std::vector<cv::Vec3d> rvecs, tvecs;
+    cv::Mat Rmat;
     std::vector<int> markersIds;
     std::vector< std::vector<cv::Point2f> > markerCorners, rejectedCandidates;
     cv::aruco::DetectorParameters parameters;
@@ -145,6 +149,82 @@ int main(int argc, char **argv) {
     
     cv::Mat inputImage, outputImage;
     
+    //Kalma Filtering variables
+    cv::KalmanFilter kf;
+    int n_states = 18;
+    int n_measurements = 6;
+    int n_inputs = 0;
+    
+    double dt = 0.125; //Time between n_measurements(1/FPS)
+    
+    std::cout << "Kalman Filtering initialization" << std::endl;
+    kf.init(n_states,n_measurements,n_inputs,CV_64F);
+    
+    cv::setIdentity(kf.processNoiseCov, cv::Scalar::all(1e-5));  //Process noise
+    cv::setIdentity(kf.measurementNoiseCov, cv::Scalar::all(1e-4));  //Measurement noise
+    cv::setIdentity(kf.errorCovPost, cv::Scalar::all(1));  //Error covariance
+    
+
+    //TODO Double check this
+                 /* DYNAMIC MODEL */
+  //  [1 0 0 dt  0  0 dt2   0   0 0 0 0  0  0  0   0   0   0]
+  //  [0 1 0  0 dt  0   0 dt2   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 1  0  0 dt   0   0 dt2 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  1  0  0  dt   0   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  1  0   0  dt   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  1   0   0  dt 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   1   0   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   0   1   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   0   0   1 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   0   0   0 1 0 0 dt  0  0 dt2   0   0]
+  //  [0 0 0  0  0  0   0   0   0 0 1 0  0 dt  0   0 dt2   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 1  0  0 dt   0   0 dt2]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  1  0  0  dt   0   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  1  0   0  dt   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  1   0   0  dt]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   1   0   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   0   1   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   0   0   1]
+  
+  
+  // position
+  kf.transitionMatrix.at<double>(0,3) = dt;
+  kf.transitionMatrix.at<double>(1,4) = dt;
+  kf.transitionMatrix.at<double>(2,5) = dt;
+  kf.transitionMatrix.at<double>(3,6) = dt;
+  kf.transitionMatrix.at<double>(4,7) = dt;
+  kf.transitionMatrix.at<double>(5,8) = dt;
+  kf.transitionMatrix.at<double>(0,6) = 0.5*pow(dt,2);
+  kf.transitionMatrix.at<double>(1,7) = 0.5*pow(dt,2);
+  kf.transitionMatrix.at<double>(2,8) = 0.5*pow(dt,2);
+  
+  
+  // orientation
+  kf.transitionMatrix.at<double>(9,12) = dt;
+  kf.transitionMatrix.at<double>(10,13) = dt;
+  kf.transitionMatrix.at<double>(11,14) = dt;
+  kf.transitionMatrix.at<double>(12,15) = dt;
+  kf.transitionMatrix.at<double>(13,16) = dt;
+  kf.transitionMatrix.at<double>(14,17) = dt;
+  kf.transitionMatrix.at<double>(9,15) = 0.5*pow(dt,2);
+  kf.transitionMatrix.at<double>(10,16) = 0.5*pow(dt,2);
+  kf.transitionMatrix.at<double>(11,17) = 0.5*pow(dt,2);
+  
+  
+       /* MEASUREMENT MODEL */
+  //  [1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+  //  [0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+  //  [0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+  //  [0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0]
+  //  [0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0]
+  //  [0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0]
+  
+  kf.measurementMatrix.at<double>(0,0) = 1;  // x
+  kf.measurementMatrix.at<double>(1,1) = 1;  // y
+  kf.measurementMatrix.at<double>(2,2) = 1;  // z
+  kf.measurementMatrix.at<double>(3,9) = 1;  // roll
+  kf.measurementMatrix.at<double>(4,10) = 1; // pitch
+  kf.measurementMatrix.at<double>(5,11) = 1; // yaw
     
     while(1)
     {
@@ -170,9 +250,99 @@ int main(int argc, char **argv) {
             //cv::Mat rvecR;
             //cv::Rodrigues(rvecs[i],rvecR);
             //std::cout << rvecR;
-            std::cout << markersIds.at(i) << " " << tvecs[i][0] << " " << tvecs[i][1] << " " << tvecs[i][2] << " " << rvecs[i][0] << " " << rvecs[i][1] << " " << rvecs[i][2]  << std::endl;
+            //std::cout << markersIds.at(i) << " " << tvecs[i][0] << " " << tvecs[i][1] << " " << tvecs[i][2] << " " << rvecs[i][0] << " " << rvecs[i][1] << " " << rvecs[i][2]  << std::endl;
+            std::cout << markersIds.at(i) << " " << tvecs[i][0] << " " << tvecs[i][1] << " " << tvecs[i][2] << " " << rvecs[i][0] << " " << rvecs[i][1] << " " << rvecs[i][2]  << " ";
             cv::aruco::drawAxis(inputImage,camera_matrix,dist_coeffs,rvecs[i],tvecs[i],axis_length);
-        }
+            
+            cv::Mat measurements(6,1,CV_64F);
+            
+            //Getting the rotation matrix
+            cv::Rodrigues(rvecs[i],Rmat);
+            
+            //Getting measured translation
+            cv::Mat translation_measured(3,1,CV_64F);
+            translation_measured = cv::Mat(tvecs[i]);
+            
+            //Getting measured rotation
+            cv::Mat rotation_measured = Rmat;
+            
+            //Checking the rotation matrix
+            cv::Mat measured_eulers(3,1,CV_64F);
+            cv::Mat rotation_measured_T;
+            cv::transpose(rotation_measured, rotation_measured_T);
+            cv::Mat isEye = rotation_measured*rotation_measured_T;
+            cv::Mat I = cv::Mat::eye(3,3, isEye.type());
+            if(cv::norm(I,isEye) < 1e-6)
+            {
+                //Converting from rotation matrix to euler angles
+                //std::cout << "Rotation matrix is good" << std::endl;
+                float sy = sqrt(rotation_measured.at<double>(0,0) * rotation_measured.at<double>(0,0) +  rotation_measured.at<double>(1,0) * rotation_measured.at<double>(1,0) );
+                bool singular = sy < 1e-6; // If
+                
+                float x, y, z;
+                if (!singular)
+                {
+                    x = atan2(rotation_measured.at<double>(2,1) , rotation_measured.at<double>(2,2));
+                    y = atan2(-rotation_measured.at<double>(2,0), sy);\
+                    z = atan2(rotation_measured.at<double>(1,0), rotation_measured.at<double>(0,0));
+                }
+                else
+                {
+                    x = atan2(-rotation_measured.at<double>(1,2), rotation_measured.at<double>(1,1));
+                    y = atan2(-rotation_measured.at<double>(2,0), sy);
+                    z = 0;
+                }
+                measured_eulers.at<double>(0) = x;
+                measured_eulers.at<double>(1) = y;
+                measured_eulers.at<double>(2) = z;
+                
+            }
+            else 
+            {
+                std::cout << "Rotation matrix is bad" << std::endl;
+                return 1;
+            }
+            
+            // Set measurement to predict
+            measurements.at<double>(0) = translation_measured.at<double>(0); // x
+            measurements.at<double>(1) = translation_measured.at<double>(1); // y
+            measurements.at<double>(2) = translation_measured.at<double>(2); // z
+            measurements.at<double>(3) = measured_eulers.at<double>(0);      // roll
+            measurements.at<double>(4) = measured_eulers.at<double>(1);      // pitch
+            measurements.at<double>(5) = measured_eulers.at<double>(2);      // yaw
+            
+            //Filtering
+            cv::Mat predict = kf.predict();
+            cv::Mat estimated = kf.correct(measurements);
+            
+            cv::Mat translation_estimated(3,1,CV_64F);
+            cv::Mat rotation_estimated(3,3,CV_64F);
+            
+            // Estimated translation
+            translation_estimated.at<double>(0) = estimated.at<double>(0);
+            translation_estimated.at<double>(1) = estimated.at<double>(1);
+            translation_estimated.at<double>(2) = estimated.at<double>(2);
+    
+            // Estimated euler angles
+            cv::Mat eulers_estimated(3, 1, CV_64F);
+            eulers_estimated.at<double>(0) = estimated.at<double>(9);
+            eulers_estimated.at<double>(1) = estimated.at<double>(10);
+            eulers_estimated.at<double>(2) = estimated.at<double>(11);
+            
+            //Converting from euler angles to Roation matrix
+            cv::Mat R_x = (cv::Mat_<double>(3,3) << 1, 0, 0, 0, cos(eulers_estimated.at<double>(0)), -sin(eulers_estimated.at<double>(0)), 0, sin(eulers_estimated.at<double>(0)), cos(eulers_estimated.at<double>(0)));
+            cv::Mat R_y = (cv::Mat_<double>(3,3) << cos(eulers_estimated.at<double>(1)), 0, sin(eulers_estimated.at<double>(1)), 0, 1, 0, -sin(eulers_estimated.at<double>(1)), 0, cos(eulers_estimated.at<double>(1)));
+            cv::Mat R_z = (cv::Mat_<double>(3,3) << cos(eulers_estimated.at<double>(2)), -sin(eulers_estimated.at<double>(2)), 0, sin(eulers_estimated.at<double>(2)), cos(eulers_estimated.at<double>(2)), 0, 0, 0, 1);
+            
+            rotation_estimated = R_z*R_y*R_x;
+            
+            cv::Vec3d rvec_estimated;
+            cv::Rodrigues(rotation_estimated, rvec_estimated);
+            
+            std::cout << markersIds.at(i) << " " << translation_estimated.at<double>(0) << " " << translation_estimated.at<double>(1) << " " << translation_estimated.at<double>(2) << " "
+                                          << rotation_estimated.at<double>(0) << " " << rotation_estimated.at<double>(1) << " " << rotation_estimated.at<double>(2)  << std::endl;
+            
+        } //End of marker for loop
         cv::namedWindow("Input Image",CV_WINDOW_AUTOSIZE);
         cv::imshow("Input Image",inputImage);
         char key = (char) cv::waitKey(1);
@@ -187,6 +357,8 @@ int main(int argc, char **argv) {
     
     return 0;
 }
+
+
 
 //Implementaion using only aruco library without
 /*
