@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
     int n_measurements = 6;
     int n_inputs = 0;
     
-    double dt = 0.125; //Time between n_measurements(1/FPS)
+    double dt = 0.033; //Time between n_measurements(1/FPS)
     
     std::cout << "Kalman Filtering initialization" << std::endl;
     kf.init(n_states,n_measurements,n_inputs,CV_64F);
@@ -259,12 +259,21 @@ int main(int argc, char **argv) {
             //Getting the rotation matrix
             cv::Rodrigues(rvecs[i],Rmat);
             
+            /*std::cout << "Testing cv::Rodrigues : " << rvecs[i];
+            cv::Vec3d r_vec;
+            cv::Rodrigues(Rmat,r_vec);
+            std::cout << " " << r_vec << std::endl;*/
+            
+          
+            
             //Getting measured translation
             cv::Mat translation_measured(3,1,CV_64F);
             translation_measured = cv::Mat(tvecs[i]);
             
             //Getting measured rotation
             cv::Mat rotation_measured = Rmat;
+            
+            //std::cout << "Rotation Measured : " << rotation_measured << std::endl;
             
             //Checking the rotation matrix
             cv::Mat measured_eulers(3,1,CV_64F);
@@ -330,17 +339,25 @@ int main(int argc, char **argv) {
             eulers_estimated.at<double>(2) = estimated.at<double>(11);
             
             //Converting from euler angles to Roation matrix
-            cv::Mat R_x = (cv::Mat_<double>(3,3) << 1, 0, 0, 0, cos(eulers_estimated.at<double>(0)), -sin(eulers_estimated.at<double>(0)), 0, sin(eulers_estimated.at<double>(0)), cos(eulers_estimated.at<double>(0)));
-            cv::Mat R_y = (cv::Mat_<double>(3,3) << cos(eulers_estimated.at<double>(1)), 0, sin(eulers_estimated.at<double>(1)), 0, 1, 0, -sin(eulers_estimated.at<double>(1)), 0, cos(eulers_estimated.at<double>(1)));
-            cv::Mat R_z = (cv::Mat_<double>(3,3) << cos(eulers_estimated.at<double>(2)), -sin(eulers_estimated.at<double>(2)), 0, sin(eulers_estimated.at<double>(2)), cos(eulers_estimated.at<double>(2)), 0, 0, 0, 1);
+            cv::Mat R_x = (cv::Mat_<double>(3,3) << 1, 0, 0, 
+                                                    0, cos(eulers_estimated.at<double>(0)), -sin(eulers_estimated.at<double>(0)), 
+                                                    0, sin(eulers_estimated.at<double>(0)), cos(eulers_estimated.at<double>(0)));
+            cv::Mat R_y = (cv::Mat_<double>(3,3) << cos(eulers_estimated.at<double>(1)), 0, sin(eulers_estimated.at<double>(1)), 
+                                                    0, 1, 0, 
+                                                    -sin(eulers_estimated.at<double>(1)), 0, cos(eulers_estimated.at<double>(1)));
+            cv::Mat R_z = (cv::Mat_<double>(3,3) << cos(eulers_estimated.at<double>(2)), -sin(eulers_estimated.at<double>(2)), 0, 
+                                                    sin(eulers_estimated.at<double>(2)), cos(eulers_estimated.at<double>(2)), 0,
+                                                    0, 0, 1);
             
             rotation_estimated = R_z*R_y*R_x;
             
-            cv::Vec3d rvec_estimated;
+            //std::cout << "Rotaion Estimated : " << rotation_estimated << std::endl;
+            cv::Mat rvec_estimated(3,1,CV_64F);
             cv::Rodrigues(rotation_estimated, rvec_estimated);
             
             std::cout << markersIds.at(i) << " " << translation_estimated.at<double>(0) << " " << translation_estimated.at<double>(1) << " " << translation_estimated.at<double>(2) << " "
-                                          << rotation_estimated.at<double>(0) << " " << rotation_estimated.at<double>(1) << " " << rotation_estimated.at<double>(2)  << std::endl;
+                                          << rvec_estimated.at<double>(0) << " " << rvec_estimated.at<double>(1) << " " << rvec_estimated.at<double>(2)  << std::endl;
+            
             
         } //End of marker for loop
         cv::namedWindow("Input Image",CV_WINDOW_AUTOSIZE);
